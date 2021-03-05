@@ -315,7 +315,7 @@ int main()
 
 	create_system(N, starting_spin, r_low, r_high, bond_length);
 	minimize_energy(A, bond_length, r_low, r_high, elastic_k);
-	savesys();
+	//savesys();
 
 	for (double temp = T0; temp <= Tf; temp = temp + T_step)
 	//double temp = T0;
@@ -349,6 +349,10 @@ int main()
 		n_HS = (double)HS / (double)N;
 		//savesys();
 		printf("Temp: %5.2lf   n_HS: %5.3lf   LS: %d   HS: %d\n", temp, n_HS, LS, HS);
+		fp = fopen("rez.dat", "a");
+		fprintf(fp, "%5.2lf %5.3lf %d %d\n", temp, n_HS, LS, HS);
+		fclose(fp);
+
 	}
 
 	return 0;
