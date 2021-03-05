@@ -1,6 +1,6 @@
 #define _CRT_SECURE_NO_WARNINGS
 #define DEBUG_PRINT
-//#undef DEBUG_PRINT
+#undef DEBUG_PRINT
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_fft_real.h>
 #include <stdlib.h>
@@ -16,6 +16,8 @@
 
 //define constants:
 constexpr double kB = 1, tau = 1, D = 1200, g = 7, Ea = 500, k = 0.1;
+constexpr double r_low = 0.25, r_high = 0.30, bond_length = 0.4, elastic_k = 1.0, A = 0.001;
+constexpr double factor = 5.0 * M_PI; //(0.5) * M_PI / (r_high-r_low);
 
 constexpr int N = 1000;
 double x[N], r[N];
@@ -62,23 +64,28 @@ double total_energy(const gsl_vector q[], void *para) {
 	parameters *params = (parameters *)para;
 	double  bond_len = params->bond_len, elastic_k = params->elastic_k, A = params->A, r_diff = params->r_diff;
 	int N = params->N;
-	double  factor = (0.5) / r_diff, V_tot = 0;
-	double E = 0, xi, ri, x_next, r_next, e_bond;
+	//double factor = (0.5) * M_PI / r_diff;  // constanta globala
+	double V_tot = 0, E = 0, xi, ri, x_next, r_next, e_bond;
+
+	xi = gsl_vector_get(q, 0);
+	ri = r[0];
 	for (int i = 0; i < N - 1; i++) {
-		xi = gsl_vector_get(q, i);
-		ri = r[i];
-		x_next = gsl_vector_get(q, i + 1);
+		x_next = gsl_vector_get(q, (i + 1));
 		r_next = r[i + 1];
 
-		e_bond = (elastic_k / 2.0) * pow((bond_len - (x_next - xi - ri - r_next)), 2);
+		e_bond = pow((bond_len - (x_next - xi - ri - r_next)), 2);
 		E += e_bond;
 
-		V_tot = V_tot - A * abs(sin(factor * (xi + r_diff) * M_PI));
+		//V_tot = V_tot - A * abs(sin(factor * (xi + r_diff)));  // de ce (xi+r_diff)?
+		V_tot = V_tot - A * sin(factor * xi);
+		xi = x_next;
+		ri = r_next;
 	}
 
-	V_tot = V_tot - A * abs(sin(factor * (gsl_vector_get(q, N - 1) + r_diff) * M_PI));
+	//V_tot = V_tot - A * abs(sin(factor * (gsl_vector_get(q, N - 1) + r_diff) * M_PI));
+	V_tot = V_tot - A * sin(factor * gsl_vector_get(q, (N - 1)));
 
-	return E + V_tot;
+	return ((elastic_k / 2.0) * E + V_tot);
 }
 
 void d_total_energy(const gsl_vector q[], void *para, gsl_vector *d_energy)
@@ -87,14 +94,15 @@ void d_total_energy(const gsl_vector q[], void *para, gsl_vector *d_energy)
 	int N = params->N;
 	double bond_len = params->bond_len, elastic_k = params->elastic_k, A = params->A, r_diff = params->r_diff;
 	
-	double  factor = (0.5) / r_diff, V = 0;
-	double xi, ri, x_next, r_next, x_prev, r_prev, e_bond = 0, de_dxi;
+	//double factor = (0.5) * M_PI / r_diff;  // constanta globala
+	double V = 0, xi, ri, x_next, r_next, x_prev, r_prev, e_bond = 0, de_dxi;
 
 	xi = gsl_vector_get(q, 0);
 	ri = r[0];
 	x_next = gsl_vector_get(q, 1);
 	r_next = r[1];
-	V = (-A * factor * M_PI * cos(factor * (xi + r_diff) * M_PI));
+	//V = (-A * factor * cos(factor * (xi + r_diff)));  // de ce (xi + r_diff)?
+	V = (-A * factor * cos(factor * xi));
 	e_bond = elastic_k * (bond_len - x_next + xi + ri + r_next);
 	de_dxi = V + e_bond;
 	gsl_vector_set(d_energy, 0, de_dxi);
@@ -107,7 +115,8 @@ void d_total_energy(const gsl_vector q[], void *para, gsl_vector *d_energy)
 		ri = r_next;
 		r_next = r[i + 1];
 
-		V = -A * factor * M_PI * cos(factor * (xi + r_diff) * M_PI);
+		//V = -A * factor * cos(factor * (xi + r_diff) );
+		V = -A * factor * cos(factor * xi);
 		e_bond = elastic_k * (-x_next - x_prev + 2 * xi + -r_prev + r_next);
 		de_dxi = V + e_bond;
 		gsl_vector_set(d_energy, i, de_dxi);
@@ -117,7 +126,8 @@ void d_total_energy(const gsl_vector q[], void *para, gsl_vector *d_energy)
 	xi = x_next;
 	r_prev = ri;
 	ri = r_next;
-	V = (-A * factor * M_PI * cos(factor * (xi + r_diff) * M_PI));
+	//V = (-A * factor * cos(factor * (xi + r_diff) ));
+	V = (-A * factor * cos(factor * xi));
 	e_bond = elastic_k * (-bond_len - x_prev + xi - ri - r_prev);
 	de_dxi = V + e_bond;
 	gsl_vector_set(d_energy, N - 1, de_dxi);
@@ -142,23 +152,25 @@ void minimize_energy(double A, double bond_length, double r_low, double r_high, 
 		gsl_vector_set(poz, i, x[i]);
 	}
 
-	parameters params;
-	params.N = N;
-	params.A = A;
-	params.bond_len = bond_length;
-	params.elastic_k = elastic_k;
-	params.r_diff = r_high - r_low;
+// 	parameters params;
+// 	params.N = N;
+// 	params.A = A;
+// 	params.bond_len = bond_length;
+// 	params.elastic_k = elastic_k;
+// 	params.r_diff = r_high - r_low;
 
 	/* Initialize method and iterate */
-	minex_func.n = N;
-	minex_func.f = total_energy;
-	minex_func.df = d_total_energy;
-	minex_func.fdf = fdfn1;
-	minex_func.params = &params;
-
-	s = gsl_multimin_fdfminimizer_alloc(Typ, N);
-	//status = gsl_multimin_fdfminimizer_restart(s);
+// 	minex_func.n = N;
+// 	minex_func.f = total_energy;
+// 	minex_func.df = d_total_energy;
+// 	minex_func.fdf = fdfn1;
+// 	minex_func.params = &params;
+// 
+// 	s = gsl_multimin_fdfminimizer_alloc(Typ, N);
+	
 	gsl_multimin_fdfminimizer_set(s, &minex_func, poz, 0.01, 1.0e-4);
+
+	//status = gsl_multimin_fdfminimizer_restart(s);
 
 	do
 	{
@@ -274,12 +286,11 @@ void savesys(void)
 
 int main()
 {
-	// starting spin, r_low, r_high, bond_length, elastic_k for bond, A(mplitude of potential well):
 	int starting_spin = 0, chosen_particle = 0, ch;
-	double r_low = 0.25, r_high = 0.30, bond_length = 0.4, elastic_k = 1.0, A = 0.001;
 
 	// for Monte-Carlo steps:
-	double T0 = 50, Tf = 300, T_step = 1, n_steps = N, HS, LS, n_HS;
+	double T0 = 50, Tf = 300, T_step = 1, n_HS;
+	int n_steps = N, HS, LS;
 	// for calculating probs and elastic pressure:
 	double p_HtoL, p_LtoH, elastic_p;
 
@@ -306,8 +317,8 @@ int main()
 	minimize_energy(A, bond_length, r_low, r_high, elastic_k);
 	savesys();
 
-	//for (double temp = T0; temp <= Tf; temp = temp + T_step)
-	double temp = T0;
+	for (double temp = T0; temp <= Tf; temp = temp + T_step)
+	//double temp = T0;
 	{
 		for (int step = 1; step <= n_steps; step++)
 		{
@@ -318,15 +329,11 @@ int main()
 			p_HtoL = prob_HtoL(temp, elastic_p);
 			p_LtoH = prob_LtoH(temp, elastic_p);
 
-			//ch = change_spin(chosen_particle, p_HtoL, p_LtoH, r_low, r_high);
-			ch = 1;
-			r[500] = r_high;
+			ch = change_spin(chosen_particle, p_HtoL, p_LtoH, r_low, r_high);
 
 			if (ch == 1)
 			{
 				minimize_energy(A, bond_length, r_low, r_high, elastic_k);
-				savesys();
-				break;
 			}
 		}
 
@@ -339,7 +346,9 @@ int main()
 				HS++;
 		}
 
-		n_HS = HS / N;
+		n_HS = (double)HS / (double)N;
+		//savesys();
+		printf("Temp: %5.2lf   n_HS: %5.3lf   LS: %d   HS: %d\n", temp, n_HS, LS, HS);
 	}
 
 	return 0;
