@@ -14,15 +14,32 @@
 #include "cmath"
 #include <random>
 
+#define DO_PARALLEL
+#undef DO_PARALLEL
+
+#ifdef DO_PARALLEL
+#include "omp.h"
+#endif
+
 //define constants:
 constexpr double kB = 1.0, tau = 100.0, D = 1100.0, g = 5.5, Ea = 400.0, k = 2000.0;
 constexpr double r_low = 0.25, r_high = 0.30, bond_length = 2.0, elastic_k = 1.0, A = 0.001;
 constexpr double factor = 20.0 * M_PI; //(0.5) * M_PI / (r_high-r_low);
 
-constexpr int N = 1000;
+constexpr int N = 10000;
 double x[N], r[N];
 int spin[N];		// necesar? avem raza care e strict corelata cu spinul
 FILE *fp;
+
+
+double rand_prob;
+std::random_device rd;
+std::mt19937 mt_prob(rd());
+std::uniform_real_distribution<double> random_para(0, 1);
+
+std::random_device rd_choice;
+std::mt19937 mt(rd_choice());
+std::uniform_int_distribution<int> dist(0, N - 1);
 
 const gsl_multimin_fdfminimizer_type *Typ = gsl_multimin_fdfminimizer_conjugate_fr;
 gsl_multimin_fdfminimizer *s;
@@ -71,6 +88,7 @@ double total_energy(const gsl_vector q[], void *para) {
 
 	xi = gsl_vector_get(q, 0);
 	ri = r[0];
+	
 	for (int i = 0; i < N - 1; i++) {
 		x_next = gsl_vector_get(q, (i + 1));
 		r_next = r[i + 1];
@@ -186,7 +204,9 @@ void minimize_energy(double A, double bond_length, double r_low, double r_high, 
 		status = gsl_multimin_test_gradient(s->gradient, 1.0e-3);
 
 	} while (status == GSL_CONTINUE);
-
+#ifdef DO_PARALLEL
+#pragma omp parallel for
+#endif
 	for (int i = 0; i < N; i++)
 	{
 		x[i] = gsl_vector_get(s->x, i);
@@ -197,13 +217,9 @@ void minimize_energy(double A, double bond_length, double r_low, double r_high, 
 #endif
 }
 
-int change_spin(int i, double p_HtoL, double p_LtoH, double R_low, double R_high) {
+int change_spin(int i, double p_HtoL, double p_LtoH) {
 
-	double rand_prob;
-	std::random_device rd;
-	std::mt19937 mt(rd());
-	std::uniform_real_distribution<double> random_para(0, 1);
-	rand_prob = random_para(mt);
+	rand_prob = random_para(mt_prob);
 #ifdef DEBUG_PRINT
 	printf("%d \t %lf \t %lf \t %lf \t L_to_H  %lf \t L_to_H  %lf \n", i, x[i], r[i], rand_prob, p_LtoH, p_HtoL);
 #endif
@@ -211,7 +227,7 @@ int change_spin(int i, double p_HtoL, double p_LtoH, double R_low, double R_high
 	int changed = 0;
 	if (spin[i] == 1 && rand_prob < p_HtoL) {
 		spin[i] = 0;
-		r[i] = R_low;
+		r[i] = r_low;
 		changed = -1;				// changed = -1   HS-to-LS
 #ifdef DEBUG_PRINT
 		printf("Changed high to low \n");
@@ -220,7 +236,7 @@ int change_spin(int i, double p_HtoL, double p_LtoH, double R_low, double R_high
 
 	if (changed == 0 && spin[i] == 0 && rand_prob < p_LtoH) {
 		spin[i] = 1;
-		r[i] = R_high;
+		r[i] = r_high;
 		changed = 1;				// changed = +1   LS-to-HS
 #ifdef DEBUG_PRINT
 		printf("Changed low to high \n");
@@ -299,10 +315,6 @@ int main()
 	// for calculating probs and elastic pressure:
 	double p_HtoL, p_LtoH, elastic_p;
 
-	std::random_device rd;
-	std::mt19937 mt(rd());
-	std::uniform_int_distribution<int> dist(0, N - 1);
-
 	parameters params;
 	params.N = N;
 	params.A = A;
@@ -325,7 +337,7 @@ int main()
 //////////////////////////////////////////////////////////////////////////
 //////////  RELAX
 /////////////////////////////////////////////////////////////////////////
-// 	
+	
 // 	HS = 0;
 // 	LS = N;
 // 
@@ -342,7 +354,7 @@ int main()
 // 			p_HtoL = prob_HtoL(temp, elastic_p);
 // 			p_LtoH = prob_LtoH(temp, elastic_p);
 // 
-// 			ch = change_spin(chosen_particle, p_HtoL, p_LtoH, r_low, r_high);
+// 			ch = change_spin(chosen_particle, p_HtoL, p_LtoH);
 // 
 // 
 // 			if (ch != 0)
@@ -367,7 +379,7 @@ int main()
 // // 					HS++;
 // // 			}
 // 			
-// 			if (!(step%100))
+// 			if (!(step%10000))
 // 			{
 // 				n_HS = (double)HS / (double)N;
 // 				fprintf(fp, "%d  %5.2lf %5.3lf %d %d\n", step, temp, n_HS, LS, HS);
@@ -381,12 +393,13 @@ int main()
 // 		fclose(fp);
 // 
 // 	}
-// 
+
 
 
 //////////////////////////////////////////////////////////////////////////
 //////////  MHL TO UP
 /////////////////////////////////////////////////////////////////////////
+
 	HS = 0;
 	LS = N;
 
@@ -401,7 +414,7 @@ int main()
 			p_HtoL = prob_HtoL(temp, elastic_p);
 			p_LtoH = prob_LtoH(temp, elastic_p);
 
-			ch = change_spin(chosen_particle, p_HtoL, p_LtoH, r_low, r_high);
+			ch = change_spin(chosen_particle, p_HtoL, p_LtoH);
 
 			if (ch != 0)
 			{
@@ -444,7 +457,7 @@ int main()
 			p_HtoL = prob_HtoL(temp, elastic_p);
 			p_LtoH = prob_LtoH(temp, elastic_p);
 
-			ch = change_spin(chosen_particle, p_HtoL, p_LtoH, r_low, r_high);
+			ch = change_spin(chosen_particle, p_HtoL, p_LtoH);
 
 			if (ch != 0)
 			{
