@@ -29,8 +29,13 @@ constexpr double factor = 20.0 * M_PI; //(0.5) * M_PI / (r_high-r_low);
 constexpr int N = 10000;
 double x[N], r[N];
 int spin[N];		// necesar? avem raza care e strict corelata cu spinul
-FILE *fp;
 
+
+FILE *fp_MHL, *fp_poz, *fp_stat;
+
+constexpr char fis_rez[200] = "E:\\Stoleriu\\C\\special\\3d\\res\\2021\\Elastic\\minimization\\minimize_10000_MHL.dat";
+constexpr char fis_poz[200] = "E:\\Stoleriu\\C\\special\\3d\\res\\2021\\Elastic\\minimization\\minimize_10000_poz.dat";
+constexpr char fis_stat[200] = "E:\\Stoleriu\\C\\special\\3d\\res\\2021\\Elastic\\minimization\\minimize_10000_state.dat";
 
 double rand_prob;
 std::random_device rd;
@@ -281,33 +286,35 @@ void create_system(int number_of_particles, int starting_spin, double r_low, dou
 	}
 }
 
-void savesys(void)
+void savesys(double temp, double n_HS, int LS, int HS)
 {
-	fp = fopen("rez.dat", "a");
+	fp_MHL = fopen(fis_rez, "a");
+	fprintf(fp_MHL, "%5.2lf %5.3lf %d %d\n", temp, n_HS, LS, HS);
+	fclose(fp_MHL);
+
+	fp_poz = fopen(fis_poz, "a");
+	fp_stat = fopen(fis_stat, "a");
 	for (int i = 0; i < N; i++)
 	{
-		fprintf(fp, "%5.4lf ", x[i]);
+		fprintf(fp_poz, "%lf ", x[i]);
+		fprintf(fp_stat, "%d ", spin[i]);
 	}
-	fprintf(fp, "\n");
-	for (int i = 0; i < N; i++)
-	{
-		fprintf(fp, "%d ", spin[i]);
-	}
-	fprintf(fp, "\n");
-	for (int i = 0; i < N; i++)
-	{
-		fprintf(fp, "%3.2lf ", r[i]);
-	}
-	fprintf(fp, "\n");
-	fclose(fp);
+	fprintf(fp_poz, "\n");
+	fprintf(fp_stat, "\n");
+	fclose(fp_stat);
+	fclose(fp_poz);
 }
 
 int main()
 {
 	int starting_spin = 0, chosen_particle = 0, ch;
 
-	fp = fopen("rez.dat", "w");
-	fclose(fp);
+	fp_MHL = fopen(fis_rez, "w");
+	fclose(fp_MHL);
+	fp_poz = fopen(fis_poz, "w");
+	fclose(fp_poz);
+	fp_stat = fopen(fis_stat, "w");
+	fclose(fp_stat);
 
 	// for Monte-Carlo steps:
 	double T0 = 50, Tf = 200, T_step = 0.001, n_HS;
@@ -394,8 +401,6 @@ int main()
 // 
 // 	}
 
-
-
 //////////////////////////////////////////////////////////////////////////
 //////////  MHL TO UP
 /////////////////////////////////////////////////////////////////////////
@@ -433,11 +438,8 @@ int main()
 		if (  fabs(temp - (int)temp) < 1.0e-3   )
 		{
 			n_HS = (double)HS / (double)N;
-			//savesys();
+			savesys(temp, n_HS, LS, HS);
 			printf("Temp: %5.2lf   n_HS: %5.3lf   LS: %d   HS: %d\n", temp, n_HS, LS, HS);
-			fp = fopen("rez.dat", "a");
-			fprintf(fp, "%5.2lf %5.3lf %d %d\n", temp, n_HS, LS, HS);
-			fclose(fp);
 		}
 
 	}
@@ -476,11 +478,8 @@ int main()
 		if (fabs(temp - (int)temp) < 1.0e-3)
 		{
 			n_HS = (double)HS / (double)N;
-			//savesys();
+			savesys(temp, n_HS, LS, HS);
 			printf("Temp: %5.2lf   n_HS: %5.3lf   LS: %d   HS: %d\n", temp, n_HS, LS, HS);
-			fp = fopen("rez.dat", "a");
-			fprintf(fp, "%5.2lf %5.3lf %d %d\n", temp, n_HS, LS, HS);
-			fclose(fp);
 		}
 
 	}
