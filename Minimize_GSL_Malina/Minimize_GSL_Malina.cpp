@@ -220,6 +220,8 @@ void minimize_energy(double A, double bond_length, double r_low, double r_high, 
 #ifdef DEBUG_PRINT
 	printf("minimized!!!!! \n");
 #endif
+
+	gsl_vector_free(poz);
 }
 
 int change_spin(int i, double p_HtoL, double p_LtoH) {
