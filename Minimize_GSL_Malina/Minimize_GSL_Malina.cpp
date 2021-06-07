@@ -1,3 +1,4 @@
+
 #define _CRT_SECURE_NO_WARNINGS
 #define DEBUG_PRINT
 #undef DEBUG_PRINT
@@ -23,7 +24,7 @@
 
 //define constants:
 constexpr double kB = 1.0, tau = 100.0, D = 1100.0, g = 5.5, Ea = 400.0, k = 2000.0;
-constexpr double r_low = 0.25, r_high = 0.30, bond_length = 2.0, elastic_k = 1.0, A = 0.001;
+constexpr double r_low = 0.25, r_high = 0.30, bond_length = 2.0, elastic_k = 1, A = 0.001;
 constexpr double factor = 20.0 * M_PI; //(0.5) * M_PI / (r_high-r_low);
 
 constexpr int N = 10000;
@@ -31,11 +32,13 @@ double x[N], r[N];
 int spin[N];		// necesar? avem raza care e strict corelata cu spinul
 
 
-FILE *fp_MHL, *fp_poz, *fp_stat;
 
-constexpr char fis_rez[200] = "E:\\Stoleriu\\C\\special\\3d\\res\\2021\\Elastic\\minimization\\minimize_10000_MHL.dat";
-constexpr char fis_poz[200] = "E:\\Stoleriu\\C\\special\\3d\\res\\2021\\Elastic\\minimization\\minimize_10000_poz.dat";
-constexpr char fis_stat[200] = "E:\\Stoleriu\\C\\special\\3d\\res\\2021\\Elastic\\minimization\\minimize_10000_state.dat";
+FILE *fp_MHL, *fp_poz, *fp_stat, *fp_nbh;
+
+char fis_rez[200];
+char fis_poz[200];
+char fis_stat[200];
+char fis_nbh[200];
 
 double rand_prob;
 std::random_device rd;
@@ -93,7 +96,7 @@ double total_energy(const gsl_vector q[], void *para) {
 
 	xi = gsl_vector_get(q, 0);
 	ri = r[0];
-	
+
 	for (int i = 0; i < N - 1; i++) {
 		x_next = gsl_vector_get(q, (i + 1));
 		r_next = r[i + 1];
@@ -296,20 +299,90 @@ void savesys(double temp, double n_HS, int LS, int HS)
 
 	fp_poz = fopen(fis_poz, "a");
 	fp_stat = fopen(fis_stat, "a");
+	fp_nbh = fopen(fis_nbh, "a");
 	for (int i = 0; i < N; i++)
 	{
+		int spini = spin[i];
+
 		fprintf(fp_poz, "%lf ", x[i]);
-		fprintf(fp_stat, "%d ", spin[i]);
+		fprintf(fp_stat, "%d ", spini);
+		if (i == 0)
+		{
+			int spinnext = spin[i + 1];
+			if (spini == 0)
+				if (spinnext == 0)
+					fprintf(fp_nbh, "%d ", 0);
+				else
+					fprintf(fp_nbh, "%d ", -1);
+			else
+				if (spinnext == 0)
+					fprintf(fp_nbh, "%d ", 1);
+				else
+					fprintf(fp_nbh, "%d ", 2);
+		}
+		if (i == N - 1)
+		{
+			int spinprev = spin[i + 1];
+			if (spini == 0)
+				if (spinprev == 0)
+					fprintf(fp_nbh, "%d ", 0);
+				else
+					fprintf(fp_nbh, "%d ", -1);
+			else
+				if (spinprev == 0)
+					fprintf(fp_nbh, "%d ", 1);
+				else
+					fprintf(fp_nbh, "%d ", 2);
+		}
+		if (i != 0 && i != N - 1)
+		{
+			int spinnext = spin[i + 1], spinprev = spin[i - 1];
+
+			if (spini == 0)
+				if (spinnext == 0)
+					if (spinprev == 0)
+						fprintf(fp_nbh, "%d ", 0);
+					else
+						fprintf(fp_nbh, "%d ", -1);
+				else
+					if (spinprev == 0)
+						fprintf(fp_nbh, "%d ", -1);
+					else
+						fprintf(fp_nbh, "%d ", -2);
+			else
+				if (spinnext == 0)
+					if (spinprev == 0)
+						fprintf(fp_nbh, "%d ", 1);
+					else
+						fprintf(fp_nbh, "%d ", 2);
+				else
+					if (spinprev == 0)
+						fprintf(fp_nbh, "%d ", 2);
+					else
+						fprintf(fp_nbh, "%d ", 3);
+		}
+
 	}
 	fprintf(fp_poz, "\n");
 	fprintf(fp_stat, "\n");
 	fclose(fp_stat);
 	fclose(fp_poz);
+	fclose(fp_nbh);
 }
 
 int main()
 {
 	int starting_spin = 0, chosen_particle = 0, ch;
+
+	// for Monte-Carlo steps:
+	double T0 = 50, Tf = 200, T_step = 0.005, n_HS;
+	int n_steps = N, HS, LS;
+
+	sprintf(fis_rez, "minimize_%d_MHL_k_%lf_A_%lf_dT_%lf.dat", N, elastic_k, A, T_step);
+	sprintf(fis_poz, "minimize_%d_poz_k_%lf_A_%lf_dT_%lf.dat", N, elastic_k, A, T_step);
+	sprintf(fis_stat, "minimize_%d_state_k_%lf_A_%lf_dT_%lf.dat", N, elastic_k, A, T_step);
+	sprintf(fis_nbh, "minimize_%d_nbh_k_%lf_A_%lf_dT_%lf.dat", N, elastic_k, A, T_step);
+
 
 	fp_MHL = fopen(fis_rez, "w");
 	fclose(fp_MHL);
@@ -317,10 +390,9 @@ int main()
 	fclose(fp_poz);
 	fp_stat = fopen(fis_stat, "w");
 	fclose(fp_stat);
+	fp_nbh = fopen(fis_nbh, "w");
+	fclose(fp_nbh);
 
-	// for Monte-Carlo steps:
-	double T0 = 50, Tf = 200, T_step = 0.001, n_HS;
-	int n_steps = N, HS, LS;
 	// for calculating probs and elastic pressure:
 	double p_HtoL, p_LtoH, elastic_p;
 
@@ -346,7 +418,7 @@ int main()
 //////////////////////////////////////////////////////////////////////////
 //////////  RELAX
 /////////////////////////////////////////////////////////////////////////
-	
+
 // 	HS = 0;
 // 	LS = N;
 // 
@@ -437,7 +509,7 @@ int main()
 			}
 		}
 
-		if (  fabs(temp - (int)temp) < 1.0e-3   )
+		if (fabs(temp - (int)temp) < 1.0e-3)
 		{
 			n_HS = (double)HS / (double)N;
 			savesys(temp, n_HS, LS, HS);
@@ -446,9 +518,9 @@ int main()
 
 	}
 
-//////////////////////////////////////////////////////////////////////////
-//////////  MHL TO DOWN
-/////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////
+	//////////  MHL TO DOWN
+	/////////////////////////////////////////////////////////////////////////
 
 	for (double temp = Tf; temp >= T0; temp = temp - T_step)
 	{
@@ -488,3 +560,4 @@ int main()
 
 	return 0;
 }
+
